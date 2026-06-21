@@ -45,7 +45,7 @@
         </div>
 
         <section class="grid gap-5 md:gap-6 mt-8 md:mt-14">
-          <button id="openTranslator" class="landing-card group">
+          <button id="openTranslator" class="landing-card group" type="button">
             <div class="icon-box">
               <svg viewBox="0 0 24 24" class="w-10 h-10 text-violet-300" fill="none" stroke="currentColor" stroke-width="1.8">
                 <path d="M12 3v13" stroke-linecap="round"></path>
@@ -57,13 +57,15 @@
             <div class="flex-1 text-left">
               <h2 class="text-2xl md:text-3xl font-medium text-slate-100">MAL / AL / Kitsu scraper</h2>
               <p class="mt-2 text-sm md:text-base text-slate-400 leading-6">
-                Scrape anime, manga, and user data from MyAnimeList, AniList, and Kitsu with ease.
+                Scrape anime, manga, and list data from MyAnimeList, AniList, and Kitsu with ease.
               </p>
             </div>
             <span class="chevron">›</span>
           </button>
 
-          <button class="landing-card group future-card" data-title="Profile Generation" data-text="Generate beautiful structured anime profiles and statistics from your data. This feature will be added in a future update.">
+          <button class="landing-card group future-card" type="button"
+            data-title="Profile Generation"
+            data-text="Generate beautiful structured anime profiles and statistics from your data. This feature will be added in a future update.">
             <div class="icon-box">
               <svg viewBox="0 0 24 24" class="w-10 h-10 text-indigo-300" fill="none" stroke="currentColor" stroke-width="1.8">
                 <circle cx="12" cy="8" r="3.5"></circle>
@@ -80,7 +82,9 @@
             <span class="chevron">›</span>
           </button>
 
-          <button class="landing-card group future-card" data-title="Custom Website Scraper" data-text="Scrape data from any website with custom selectors and flexible rules. This feature will be added in a future update.">
+          <button class="landing-card group future-card" type="button"
+            data-title="Custom Website Scraper"
+            data-text="Scrape data from any website with custom selectors and flexible rules. This feature will be added in a future update.">
             <div class="icon-box">
               <svg viewBox="0 0 24 24" class="w-10 h-10 text-violet-300" fill="none" stroke="currentColor" stroke-width="1.8">
                 <circle cx="12" cy="12" r="8"></circle>
@@ -117,19 +121,29 @@
               </p>
             </div>
 
-            <button id="backHomeBtn" class="hidden md:inline-flex px-4 py-2 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 text-sm text-slate-200 transition">
+            <button id="backHomeBtn" class="hidden md:inline-flex px-4 py-2 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 text-sm text-slate-200 transition" type="button">
               Back
             </button>
           </div>
 
           <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             <div>
-              <label class="label">Platform</label>
+              <label class="label">Source Platform</label>
               <select id="sourcePlatform" class="input">
                 <option value="ANILIST">AniList</option>
                 <option value="MAL">MyAnimeList</option>
                 <option value="KITSU">Kitsu</option>
               </select>
+            </div>
+
+            <div>
+              <label class="label">Target Platform</label>
+              <select id="targetPlatform" class="input">
+                <option value="MAL">MyAnimeList</option>
+                <option value="ANILIST">AniList</option>
+                <option value="KITSU">Kitsu</option>
+              </select>
+              <p id="targetRecommendationText" class="mt-2 text-xs text-slate-500"></p>
             </div>
 
             <div>
@@ -148,7 +162,7 @@
             <div>
               <label class="label">Export Format</label>
               <select id="exportFormat" class="input">
-                <option value="XML">MyAnimeList XML</option>
+                <option value="XML">XML</option>
                 <option value="CSV">CSV</option>
                 <option value="JSON">JSON</option>
                 <option value="TXT">TXT</option>
@@ -164,6 +178,15 @@
                 <option value="UP">Round up</option>
                 <option value="DOWN">Round down</option>
               </select>
+            </div>
+
+            <div>
+              <label class="label">Choose Mode</label>
+              <select id="modeSelect" class="input" disabled>
+                <option>Normal Mode (not implemented yet)</option>
+                <option>Deep Perfect Mode (not implemented yet)</option>
+              </select>
+              <p class="mt-2 text-xs text-slate-500">Mode selection will be added in a future update.</p>
             </div>
 
             <div class="flex items-end">
@@ -185,6 +208,7 @@
             <div id="matchProgressBox" class="hidden mt-4 rounded-2xl border border-violet-400/20 bg-violet-500/10 p-4 text-left text-sm text-violet-100">
               <div class="font-semibold mb-1">Resolving missing MAL IDs</div>
               <div id="matchProgressText">Starting...</div>
+              <div id="matchCurrentText" class="mt-1 text-violet-100/75">Current: -</div>
               <div id="matchTimerText" class="mt-1 text-violet-100/75">Elapsed: 0s</div>
             </div>
           </div>
@@ -204,11 +228,33 @@
 
     <div id="futureModal" class="fixed inset-0 hidden items-center justify-center z-50 px-4">
       <div id="futureModalBackdrop" class="absolute inset-0 bg-black/70 backdrop-blur-sm"></div>
-      <div class="relative w-full max-w-lg rounded-[1.75rem] border border-white/10 bg-[#0b1020] p-6 md:p-8 shadow-2xl">
-        <button id="futureModalClose" class="absolute right-4 top-4 text-slate-400 hover:text-white text-2xl leading-none">&times;</button>
+      <div class="modal-shell relative w-full max-w-lg rounded-[1.75rem] border border-white/10 bg-[#0b1020] p-6 md:p-8 shadow-2xl">
+        <button id="futureModalClose" class="absolute right-4 top-4 text-slate-400 hover:text-white text-2xl leading-none" type="button">&times;</button>
         <p class="text-xs uppercase tracking-[0.3em] text-violet-300/80 mb-3">Coming later</p>
         <h3 id="futureModalTitle" class="text-2xl md:text-3xl font-semibold text-white"></h3>
         <p id="futureModalText" class="mt-4 text-sm md:text-base text-slate-300 leading-7"></p>
+      </div>
+    </div>
+
+    <div id="jikanModal" class="fixed inset-0 hidden items-center justify-center z-50 px-4">
+      <div id="jikanModalBackdrop" class="absolute inset-0 bg-black/70 backdrop-blur-sm"></div>
+      <div class="modal-shell relative w-full max-w-xl rounded-[1.75rem] border border-violet-400/15 bg-[#0b1020] p-6 md:p-8 shadow-2xl">
+        <p class="text-xs uppercase tracking-[0.3em] text-violet-300/80 mb-3">Fallback lookup</p>
+        <h3 class="text-2xl md:text-3xl font-semibold text-white">Resolving missing entries</h3>
+        <p class="mt-4 text-sm md:text-base text-slate-300 leading-7">
+          This uses Jikan as a backup search layer. It is intentionally slow so the API does not throw a fit and pretend it was your fault!🤣
+        </p>
+
+        <div class="mt-6 rounded-2xl border border-white/10 bg-white/5 p-4">
+          <div id="jikanProgressText" class="text-sm text-violet-100">Preparing...</div>
+          <div id="jikanCurrentText" class="mt-2 text-sm text-violet-100/75">Current: -</div>
+          <div id="jikanTimerText" class="mt-2 text-sm text-violet-100/75">Elapsed: 0s</div>
+        </div>
+
+        <div class="mt-6 flex items-center gap-3 text-sm text-violet-100/70">
+          <div class="loader w-5 h-5 border-4 border-white/15 rounded-full"></div>
+          Please keep this tab open while fallback matching runs.
+        </div>
       </div>
     </div>
   </div>

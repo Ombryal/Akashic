@@ -1,4 +1,4 @@
-import { sleep, unique, normalizeText, buildTitleCandidates } from "./utils.js";
+import { sleep, unique, normalizeText } from "./utils.js";
 
 const jikanCache = new Map();
 
@@ -205,30 +205,64 @@ export async function fetchKitsu(username, type) {
 export async function resolveMissingMalIds(items, type, enabled = true, onProgress = () => {}) {
   if (!enabled) return items;
 
-  const out = [];
-  let done = 0;
+  const out = [...items];
+  const unresolvedIndexes = out
+    .map((item, index) => ({ item, index }))
+    .filter(({ item }) => !item.idMal);
 
-  for (const item of items) {
-    const next = { ...item };
+  const total = unresolvedIndexes.length;
+  const batchSize = 5;
+  const delayBetweenBatches = 2500;
 
-    if (!next.idMal) {
-      next.idMal = await resolveMalIdByTitles(next.titleCandidates || [next.title], type);
-      if (!next.idMal) {
-        next.idMal = null;
-      }
-      await sleep(150);
-    }
+  onProgress({
+    phase: "start",
+    done: 0,
+    total,
+    matched: out.length - total,
+    unmatched: total
+  });
 
-    out.push(next);
-    done += 1;
+  for (let i = 0; i < unresolvedIndexes.length; i += batchSize) {
+    const batch = unresolvedIndexes.slice(i, i + batchSize);
+
+    await Promise.all(
+      batch.map(async ({ item, index }) => {
+        const resolvedId = await resolveMalIdByTitles(
+          item.titleCandidates || [item.title],
+          type
+        );
+
+        out[index] = {
+          ...out[index],
+          idMal: resolvedId || null
+        };
+      })
+    );
+
+    const done = Math.min(i + batchSize, total);
+    const matched = out.filter((x) => x.idMal).length;
+    const unmatched = out.length - matched;
 
     onProgress({
+      phase: "batch",
       done,
-      total: items.length,
-      matched: out.filter((x) => x.idMal).length,
-      unmatched: out.filter((x) => !x.idMal).length
+      total,
+      matched,
+      unmatched
     });
+
+    if (i + batchSize < unresolvedIndexes.length) {
+      await sleep(delayBetweenBatches);
+    }
   }
+
+  onProgress({
+    phase: "done",
+    done: total,
+    total,
+    matched: out.filter((x) => x.idMal).length,
+    unmatched: out.filter((x) => !x.idMal).length
+  });
 
   return out;
 }
@@ -238,7 +272,7 @@ async function resolveMalIdByTitles(titles, type) {
   const cleaned = unique((titles || []).filter(Boolean));
 
   for (const rawTitle of cleaned) {
-    const title = rawTitle.trim();
+    const title = String(rawTitle).trim();
     if (!title) continue;
 
     const cacheKey = `${kind}:${normalizeText(title)}`;
@@ -257,7 +291,7 @@ async function resolveMalIdByTitles(titles, type) {
     }
 
     jikanCache.set(cacheKey, null);
-    await sleep(350);
+    await sleep(500);
   }
 
   return null;
@@ -317,9 +351,11 @@ function sharedTokenCount(a, b) {
   const setA = new Set(String(a).split(/\s+/).filter(Boolean));
   const setB = new Set(String(b).split(/\s+/).filter(Boolean));
   let count = 0;
+
   for (const token of setA) {
     if (setB.has(token)) count += 1;
   }
+
   return count;
 }
 

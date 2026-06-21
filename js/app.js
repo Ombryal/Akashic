@@ -3,6 +3,54 @@ import { fetchAniList, fetchMAL, fetchKitsu, resolveMissingMalIds } from "./api.
 import { applyScoreRule, normalizeStatusToMalCode, downloadBlob } from "./utils.js";
 import { buildXML, buildCSV, buildJSON, buildTXT, buildDOCX } from "./exporters.js";
 
+const landingScreen = document.getElementById("landingScreen");
+const translatorScreen = document.getElementById("translatorScreen");
+const openTranslator = document.getElementById("openTranslator");
+const backHomeBtn = document.getElementById("backHomeBtn");
+
+const futureModal = document.getElementById("futureModal");
+const futureModalBackdrop = document.getElementById("futureModalBackdrop");
+const futureModalClose = document.getElementById("futureModalClose");
+const futureModalTitle = document.getElementById("futureModalTitle");
+const futureModalText = document.getElementById("futureModalText");
+
+document.querySelectorAll(".future-card").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    openFutureModal(btn.dataset.title, btn.dataset.text);
+  });
+});
+
+openTranslator?.addEventListener("click", () => {
+  landingScreen.classList.add("hidden");
+  translatorScreen.classList.remove("hidden");
+  translatorScreen.scrollIntoView({ behavior: "smooth", block: "start" });
+});
+
+backHomeBtn?.addEventListener("click", () => {
+  translatorScreen.classList.add("hidden");
+  landingScreen.classList.remove("hidden");
+  landingScreen.scrollIntoView({ behavior: "smooth", block: "start" });
+});
+
+futureModalBackdrop?.addEventListener("click", closeFutureModal);
+futureModalClose?.addEventListener("click", closeFutureModal);
+
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") closeFutureModal();
+});
+
+function openFutureModal(title, text) {
+  futureModalTitle.textContent = title || "Coming soon";
+  futureModalText.textContent = text || "This feature will be added in a future update.";
+  futureModal.classList.remove("hidden");
+  futureModal.classList.add("flex");
+}
+
+function closeFutureModal() {
+  futureModal.classList.add("hidden");
+  futureModal.classList.remove("flex");
+}
+
 const els = {
   sourcePlatform: document.getElementById("sourcePlatform"),
   username: document.getElementById("username"),

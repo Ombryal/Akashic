@@ -1,6 +1,8 @@
 import { sleep, unique, normalizeText } from "./utils.js";
 
 const jikanCache = new Map();
+let lastJikanRequestAt = 0;
+const JIKAN_MIN_INTERVAL_MS = 2600;
 
 function mediaKey(type) {
   return type === "ANIME" ? "anime" : "manga";
@@ -30,6 +32,7 @@ export async function fetchAniList(username, type) {
                 english
                 native
               }
+              synonyms
             }
           }
         }
@@ -61,7 +64,8 @@ export async function fetchAniList(username, type) {
     const titleCandidates = unique([
       e?.media?.title?.english,
       e?.media?.title?.romaji,
-      e?.media?.title?.native
+      e?.media?.title?.native,
+      ...(e?.media?.synonyms || [])
     ]);
 
     return {
@@ -205,14 +209,19 @@ export async function fetchKitsu(username, type) {
 export async function resolveMissingMalIds(items, type, enabled = true, onProgress = () => {}) {
   if (!enabled) return items;
 
-  const out = [...items];
+  const out = items.map((item) => ({
+    ...item,
+    titleCandidates: unique([
+      ...(item.titleCandidates || []),
+      item.title
+    ])
+  }));
+
   const unresolvedIndexes = out
     .map((item, index) => ({ item, index }))
     .filter(({ item }) => !item.idMal);
 
   const total = unresolvedIndexes.length;
-  const batchSize = 5;
-  const delayBetweenBatches = 2500;
 
   onProgress({
     phase: "start",
@@ -222,38 +231,22 @@ export async function resolveMissingMalIds(items, type, enabled = true, onProgre
     unmatched: total
   });
 
-  for (let i = 0; i < unresolvedIndexes.length; i += batchSize) {
-    const batch = unresolvedIndexes.slice(i, i + batchSize);
+  for (let i = 0; i < unresolvedIndexes.length; i += 1) {
+    const { item, index } = unresolvedIndexes[i];
+    const resolvedId = await resolveMalIdByTitles(item.titleCandidates || [item.title], type);
 
-    await Promise.all(
-      batch.map(async ({ item, index }) => {
-        const resolvedId = await resolveMalIdByTitles(
-          item.titleCandidates || [item.title],
-          type
-        );
-
-        out[index] = {
-          ...out[index],
-          idMal: resolvedId || null
-        };
-      })
-    );
-
-    const done = Math.min(i + batchSize, total);
-    const matched = out.filter((x) => x.idMal).length;
-    const unmatched = out.length - matched;
+    out[index] = {
+      ...out[index],
+      idMal: resolvedId || null
+    };
 
     onProgress({
       phase: "batch",
-      done,
+      done: i + 1,
       total,
-      matched,
-      unmatched
+      matched: out.filter((x) => x.idMal).length,
+      unmatched: out.filter((x) => !x.idMal).length
     });
-
-    if (i + batchSize < unresolvedIndexes.length) {
-      await sleep(delayBetweenBatches);
-    }
   }
 
   onProgress({
@@ -269,40 +262,51 @@ export async function resolveMissingMalIds(items, type, enabled = true, onProgre
 
 async function resolveMalIdByTitles(titles, type) {
   const kind = mediaKey(type);
-  const cleaned = unique((titles || []).filter(Boolean));
+  const cleaned = unique((titles || []).filter(Boolean).map((t) => String(t).trim()).filter(Boolean));
 
-  for (const rawTitle of cleaned) {
-    const title = String(rawTitle).trim();
-    if (!title) continue;
+  if (!cleaned.length) return null;
 
-    const cacheKey = `${kind}:${normalizeText(title)}`;
-    if (jikanCache.has(cacheKey)) {
-      const cached = jikanCache.get(cacheKey);
+  const cacheKeys = cleaned.map((title) => `${kind}:${normalizeText(title)}`);
+  for (const key of cacheKeys) {
+    if (jikanCache.has(key)) {
+      const cached = jikanCache.get(key);
       if (cached) return cached;
-      continue;
     }
-
-    const results = await searchJikan(kind, title);
-    const best = pickBestJikanMatch(results, title);
-
-    if (best?.mal_id) {
-      jikanCache.set(cacheKey, best.mal_id);
-      return best.mal_id;
-    }
-
-    jikanCache.set(cacheKey, null);
-    await sleep(500);
   }
 
-  return null;
+  const searchTitle = pickSearchTitle(cleaned);
+  if (!searchTitle) return null;
+
+  const results = await searchJikan(kind, searchTitle);
+  const best = pickBestJikanMatch(results, cleaned);
+
+  const malId = best?.mal_id || null;
+  for (const key of cacheKeys) {
+    jikanCache.set(key, malId);
+  }
+
+  return malId;
 }
 
-async function searchJikan(kind, query) {
+function pickSearchTitle(titles) {
+  const cleaned = unique((titles || []).filter(Boolean).map((t) => String(t).trim()).filter(Boolean));
+  if (!cleaned.length) return "";
+
+  const decent = cleaned.find((t) => t.length >= 4);
+  return decent || cleaned[0] || "";
+}
+
+async function searchJikan(kind, query, attempt = 0) {
   const url = `https://api.jikan.moe/v4/${kind}?q=${encodeURIComponent(query)}&limit=5&sfw=true`;
-  const response = await fetch(url);
+  const response = await rateLimitedFetch(url);
 
   if (response.status === 429) {
-    throw new Error("Jikan rate limit hit while resolving missing MAL IDs.");
+    if (attempt >= 3) {
+      throw new Error("Jikan rate limit hit while resolving missing MAL IDs.");
+    }
+
+    await sleep(3000 + attempt * 1500);
+    return searchJikan(kind, query, attempt + 1);
   }
 
   if (!response.ok) {
@@ -313,30 +317,53 @@ async function searchJikan(kind, query) {
   return json?.data || [];
 }
 
-function pickBestJikanMatch(results, query) {
+async function rateLimitedFetch(url, options = {}) {
+  const now = Date.now();
+  const wait = Math.max(0, JIKAN_MIN_INTERVAL_MS - (now - lastJikanRequestAt));
+
+  if (wait > 0) {
+    await sleep(wait);
+  }
+
+  lastJikanRequestAt = Date.now();
+  return fetch(url, options);
+}
+
+function pickBestJikanMatch(results, candidates) {
   if (!Array.isArray(results) || results.length === 0) return null;
 
-  const q = normalizeText(query);
+  const queryCandidates = unique((candidates || []).map(normalizeText).filter(Boolean));
+  if (!queryCandidates.length) return null;
 
   let best = null;
   let bestScore = -1;
 
   for (const item of results) {
-    const titles = unique([
+    const resultTitles = unique([
       item?.title,
       item?.title_english,
       item?.title_japanese,
       ...(item?.titles || []).map((t) => t?.title),
       ...(item?.title_synonyms || [])
-    ]).map(normalizeText);
+    ])
+      .map(normalizeText)
+      .filter(Boolean);
 
     let score = 0;
 
-    if (titles.includes(q)) score = 100;
-    else if (titles.some((t) => t === q)) score = 100;
-    else if (titles.some((t) => t.includes(q) || q.includes(t))) score = 80;
-    else if (titles.some((t) => sharedTokenCount(t, q) >= 2)) score = 55;
-    else if (titles.some((t) => sharedTokenCount(t, q) >= 1)) score = 25;
+    for (const q of queryCandidates) {
+      if (resultTitles.includes(q)) {
+        score = Math.max(score, 100);
+      } else if (resultTitles.some((t) => t === q)) {
+        score = Math.max(score, 100);
+      } else if (resultTitles.some((t) => t.includes(q) || q.includes(t))) {
+        score = Math.max(score, 85);
+      } else if (resultTitles.some((t) => sharedTokenCount(t, q) >= 2)) {
+        score = Math.max(score, 60);
+      } else if (resultTitles.some((t) => sharedTokenCount(t, q) >= 1)) {
+        score = Math.max(score, 35);
+      }
+    }
 
     if (score > bestScore) {
       bestScore = score;
@@ -344,7 +371,7 @@ function pickBestJikanMatch(results, query) {
     }
   }
 
-  return bestScore >= 55 ? best : null;
+  return bestScore >= 60 ? best : null;
 }
 
 function sharedTokenCount(a, b) {

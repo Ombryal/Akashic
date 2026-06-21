@@ -72,7 +72,7 @@ async function runTranslator() {
           true,
           ({ phase, done, total, matched, unmatched }) => {
             if (phase === "start") {
-              els.matchProgressText.textContent = `Found ${total} missing entries. Starting batch lookups...`;
+              els.matchProgressText.textContent = `Found ${total} missing entries. Starting fallback lookups...`;
             } else if (phase === "batch") {
               els.matchProgressText.textContent =
                 `Resolving missing MAL IDs... ${done}/${total} processed, ${matched} matched, ${unmatched} still unmatched.`;
@@ -82,9 +82,6 @@ async function runTranslator() {
             }
           }
         );
-      } else {
-        els.matchProgressBox.classList.remove("hidden");
-        els.matchProgressText.textContent = "No missing MAL IDs found. Skipping fallback lookup.";
       }
     }
 
@@ -169,6 +166,9 @@ function clearLog() {
   els.statsBox.innerHTML = "";
   els.phantomBox.classList.add("hidden");
   els.phantomList.innerHTML = "";
+  els.matchProgressBox.classList.add("hidden");
+  els.matchProgressText.textContent = "Starting...";
+  els.matchTimerText.textContent = "Elapsed: 0s";
 }
 
 function startProgressTimer() {

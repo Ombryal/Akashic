@@ -43,7 +43,8 @@ const els = {
   matchProgressText: document.getElementById("matchProgressText"),
   matchCurrentText: document.getElementById("matchCurrentText"),
   matchTimerText: document.getElementById("matchTimerText"),
-  targetRecommendationText: document.getElementById("targetRecommendationText")
+  targetRecommendationText: document.getElementById("targetRecommendationText"),
+  fallbackHint: document.getElementById("fallbackHint")
 };
 
 let timerInterval = null;
@@ -69,7 +70,6 @@ backHomeBtn?.addEventListener("click", () => {
 
 futureModalBackdrop?.addEventListener("click", closeFutureModal);
 futureModalClose?.addEventListener("click", closeFutureModal);
-
 jikanModalBackdrop?.addEventListener("click", closeJikanModal);
 
 document.addEventListener("keydown", (e) => {
@@ -80,9 +80,11 @@ document.addEventListener("keydown", (e) => {
 });
 
 els.exportBtn.addEventListener("click", runTranslator);
-els.targetPlatform.addEventListener("change", updateRecommendedFormatLabels);
+els.targetPlatform.addEventListener("change", syncTargetRules);
+els.sourcePlatform.addEventListener("change", syncTargetRules);
+els.exportFormat.addEventListener("change", syncTargetRules);
 
-updateRecommendedFormatLabels();
+syncTargetRules();
 
 function openFutureModal(title, text) {
   futureModalTitle.textContent = title || "Coming soon";
@@ -106,19 +108,38 @@ function closeJikanModal() {
   jikanModal.classList.remove("flex");
 }
 
-function updateRecommendedFormatLabels() {
+function syncTargetRules() {
+  const source = els.sourcePlatform.value;
   const target = els.targetPlatform.value;
+
   const recommended = TARGET_RECOMMENDATIONS[target] || "JSON";
   const recommendationText = TARGET_RECOMMENDATION_TEXT[target] || "Recommended export updated.";
-
   els.targetRecommendationText.textContent = recommendationText;
 
   for (const option of els.exportFormat.options) {
     const base = EXPORT_BASE_LABELS[option.value] || option.value;
-    option.textContent = option.value === recommended
-      ? `${base} (recommended)`
-      : base;
+    option.textContent = option.value === recommended ? `${base} (recommended)` : base;
+    option.disabled = false;
   }
+
+  if (target === "KITSU") {
+    els.exportFormat.value = "XML";
+    for (const option of els.exportFormat.options) {
+      option.disabled = option.value !== "XML";
+    }
+  }
+
+  const fallbackAllowed = target === "MAL" && source !== target;
+  els.fallbackSearch.disabled = !fallbackAllowed;
+  if (!fallbackAllowed) els.fallbackSearch.checked = false;
+
+  if (els.fallbackHint) {
+    els.fallbackHint.textContent = fallbackAllowed
+      ? "Only useful for MyAnimeList XML exports."
+      : "Not needed for this source and target combination.";
+  }
+
+  els.matchProgressBox.classList.add("hidden");
 }
 
 async function runTranslator() {
@@ -135,6 +156,10 @@ async function runTranslator() {
     return;
   }
 
+  if (targetPlatform === "KITSU" && exportFormat !== "XML") {
+    els.exportFormat.value = "XML";
+  }
+
   setLoading(true);
   clearLog();
   startProgressTimer();
@@ -149,11 +174,16 @@ async function runTranslator() {
       malStatus: normalizeStatusToMalCode(item.status)
     }));
 
+    const needsMalResolution =
+      targetPlatform === "MAL" &&
+      exportFormat === "XML" &&
+      sourcePlatform !== targetPlatform &&
+      fallbackSearch &&
+      standardized.some((item) => !item.idMal);
+
     let resolved = standardized;
 
-    const unresolvedCount = standardized.filter((item) => !item.idMal).length;
-
-    if (fallbackSearch && unresolvedCount > 0) {
+    if (needsMalResolution) {
       openJikanModal();
       els.matchProgressBox.classList.remove("hidden");
 
@@ -174,15 +204,15 @@ async function runTranslator() {
             jikanProgressText.textContent = msg;
           }
         },
-        onCurrent: ({ title, done, total, matched, unmatched }) => {
+        onCurrent: ({ title }) => {
           const current = title && title !== "-" ? title : "-";
           const msg = `Current: ${current}`;
           els.matchCurrentText.textContent = msg;
           jikanCurrentText.textContent = msg;
 
-          const timerElapsed = Math.floor((Date.now() - startedAt) / 1000);
-          const mins = Math.floor(timerElapsed / 60);
-          const secs = timerElapsed % 60;
+          const elapsed = Math.floor((Date.now() - startedAt) / 1000);
+          const mins = Math.floor(elapsed / 60);
+          const secs = elapsed % 60;
           const timerMsg = `Elapsed: ${mins}m ${secs}s`;
           els.matchTimerText.textContent = timerMsg;
           jikanTimerText.textContent = timerMsg;
@@ -200,10 +230,12 @@ async function runTranslator() {
     }));
 
     const exportable = exportFormat === "XML"
-      ? translated.filter((item) => item.idMal)
+      ? translated.filter((item) => item.idMal || targetPlatform !== "MAL")
       : translated;
 
-    const phantoms = translated.filter((item) => !item.idMal);
+    const showUnmatched = targetPlatform === "MAL" && exportFormat === "XML" && sourcePlatform !== targetPlatform;
+    const phantoms = showUnmatched ? translated.filter((item) => !item.idMal) : [];
+
     const filename = buildFilename(username, sourcePlatform, targetPlatform, exportFormat, mediaType);
 
     let blob;
@@ -243,10 +275,11 @@ async function runTranslator() {
       unmatched: phantoms.length,
       exportFormat,
       sourcePlatform,
-      targetPlatform
+      targetPlatform,
+      showUnmatched
     });
 
-    renderPhantoms(phantoms);
+    renderPhantoms(phantoms, showUnmatched);
     els.logSection.classList.remove("hidden");
   } catch (error) {
     console.error(error);
@@ -310,11 +343,11 @@ function stopProgressTimer() {
   }
 }
 
-function renderStats({ total, exported, matched, unmatched, exportFormat, sourcePlatform, targetPlatform }) {
+function renderStats({ total, exported, matched, unmatched, exportFormat, sourcePlatform, targetPlatform, showUnmatched }) {
   els.statsBox.innerHTML = `
     <div>Total entries: <strong>${total}</strong></div>
-    <div>Matched MAL IDs: <strong>${matched}</strong></div>
-    <div>Unmatched: <strong>${unmatched}</strong></div>
+    <div>Matched IDs: <strong>${matched}</strong></div>
+    ${showUnmatched ? `<div>Unmatched MAL IDs: <strong>${unmatched}</strong></div>` : `<div>ID matching: <strong>Not needed</strong></div>`}
     <div>Source: <strong>${sourcePlatform}</strong></div>
     <div>Target: <strong>${targetPlatform}</strong></div>
     <div>Export format: <strong>${exportFormat}</strong></div>
@@ -322,8 +355,8 @@ function renderStats({ total, exported, matched, unmatched, exportFormat, source
   `;
 }
 
-function renderPhantoms(phantoms) {
-  if (!phantoms.length) return;
+function renderPhantoms(phantoms, showUnmatched) {
+  if (!showUnmatched || !phantoms.length) return;
 
   els.phantomBox.classList.remove("hidden");
   els.phantomList.innerHTML = "";

@@ -46,8 +46,9 @@ export function initProfileModule() {
 
 export function openProfileModal() {
   syncProfileDefaults();
-  profileModal.classList.remove("hidden");
-  profileModal.classList.add("flex");
+  profileModal?.classList.remove("hidden");
+  profileModal?.classList.add("flex");
+  document.title = "Akashic | Profile Generation";
 }
 
 export function closeProfileModal({ fromHistory = false, skipHistory = false } = {}) {
@@ -56,8 +57,9 @@ export function closeProfileModal({ fromHistory = false, skipHistory = false } =
     return;
   }
 
-  profileModal.classList.add("hidden");
-  profileModal.classList.remove("flex");
+  profileModal?.classList.add("hidden");
+  profileModal?.classList.remove("flex");
+  document.title = "Akashic";
 }
 
 export function syncProfileDefaults() {
@@ -580,6 +582,4 @@ function wrapText(ctx, text, x, y, maxWidth, lineHeight, maxLines = 2) {
     }
     ctx.fillText(drawLine, x, y + i * lineHeight);
   }
-}
-
-initProfileModule();
+             }
